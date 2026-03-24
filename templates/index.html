@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Text Recognition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #5ce79b 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background: rgba(12, 238, 144, 0.938);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover {
+            background: #f8f9ff;
+            border-color: #764ba2;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .preview-area {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .preview-area img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .results {
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+        }
+
+        .word-item {
+            background: white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .confidence-bar {
+            width: 100px;
+            height: 6px;
+            background: #eee;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            padding: 20px;
+            background: #fde8e7;
+            border-radius: 8px;
+        }
+
+        .info {
+            color: #666;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 OCR Text Recognition</h1>
+            <p>Upload an image and extract text using EasyOCR</p>
+        </div>
+
+        <div class="card">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📤</div>
+                <h3>Drag & Drop or Click to Upload</h3>
+                <p>Supported: PNG, JPG, JPEG, BMP, GIF</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            
+            <div id="previewArea" class="preview-area hidden">
+                <img id="previewImage" alt="Preview">
+                <div id="imageInfo" class="info"></div>
+            </div>
+            
+            <button id="recognizeBtn" class="hidden">🔍 Recognize Text</button>
+        </div>
+
+        <div class="card hidden" id="resultsCard">
+            <h3>📊 Recognition Results</h3>
+            <div id="results" class="results"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentFile = null;
+
+        // DOM elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewArea = document.getElementById('previewArea');
+        const previewImage = document.getElementById('previewImage');
+        const imageInfo = document.getElementById('imageInfo');
+        const recognizeBtn = document.getElementById('recognizeBtn');
+        const resultsCard = document.getElementById('resultsCard');
+        const resultsDiv = document.getElementById('results');
+
+        // Upload area click
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.background = '#f8f9ff';
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.style.background = 'white';
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.background = 'white';
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleFile(file);
+            } else {
+                alert('Please drop an image file');
+            }
+        });
+
+        // Handle file selection
+        async function handleFile(file) {
+            currentFile = file;
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                previewArea.classList.remove('hidden');
+                recognizeBtn.classList.remove('hidden');
+                resultsCard.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+            
+            // Upload file to server
+            await uploadFile(file);
+        }
+
+        // Upload file to server
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    imageInfo.innerHTML = `
+                        📏 ${data.width} x ${data.height} pixels | 
+                        💾 ${data.file_size} KB
+                    `;
+                } else {
+                    imageInfo.innerHTML = `<span style="color: red;">Error: ${data.error}</span>`;
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                imageInfo.innerHTML = `<span style="color: red;">Upload failed: ${error.message}</span>`;
+            }
+        }
+
+        // Recognize text
+        recognizeBtn.addEventListener('click', async () => {
+            if (!currentFile) {
+                alert('Please select an image first');
+                return;
+            }
+            
+            // Show loading
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Extracting text with EasyOCR...</p>
+                    <p style="font-size: 12px; margin-top: 10px;">This may take a few seconds</p>
+                </div>
+            `;
+            resultsCard.classList.remove('hidden');
+            
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            
+            try {
+                const response = await fetch('/recognize', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    resultsDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Recognition error:', error);
+                resultsDiv.innerHTML = `<div class="error">❌ Network error: ${error.message}</div>`;
+            }
+        });
+
+        // Display results
+        function displayResults(data) {
+            if (data.count === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        ⚠️ No text detected in the image
+                    </div>
+                    <div class="info" style="margin-top: 15px;">
+                        <strong>Tips for better results:</strong><br>
+                        • Use clear, well-lit images<br>
+                        • Ensure text is horizontal and in focus<br>
+                        • High contrast between text and background<br>
+                        • Text should be at least 20-30 pixels tall
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>📝 Extracted Text:</strong><br>
+                    <p style="font-size: 1.2rem; margin-top: 10px;">${data.text}</p>
+                </div>
+                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>📊 Statistics:</strong><br>
+                    Words detected: ${data.count}
+                </div>
+                <strong>🔍 Detailed Results:</strong>
+            `;
+            
+            data.words.forEach(word => {
+                html += `
+                    <div class="word-item">
+                        <div style="flex: 1;">
+                            <div><strong>${word.text}</strong></div>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: ${word.confidence}%"></div>
+                            </div>
+                        </div>
+                        <div style="margin-left: 15px; color: #667eea; font-weight: bold;">
+                            ${word.confidence}%
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
